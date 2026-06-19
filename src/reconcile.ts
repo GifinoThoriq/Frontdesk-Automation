@@ -3,7 +3,10 @@ import path from 'path';
 import { NormalizedEvent, Issue, ReconcileResult } from './types';
 import { log } from './logger';
 
-const STATE_FILE = path.join(process.cwd(), 'data', 'state.json');
+// Vercel's filesystem is read-only except /tmp
+const STATE_FILE = process.env.VERCEL
+  ? '/tmp/state.json'
+  : path.join(process.cwd(), 'data', 'state.json');
 
 type PersistedState = Record<string, Issue>;
 
