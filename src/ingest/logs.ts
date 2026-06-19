@@ -1,10 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import Anthropic from '@anthropic-ai/sdk';
+import Groq from 'groq-sdk';
 import { NormalizedEvent } from '../types';
 import { log } from '../logger';
 
-const client = new Anthropic();
+const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 interface ExtractedEntry {
   id: string;
@@ -55,28 +55,21 @@ export async function ingestNightLogs(dataDir: string): Promise<NormalizedEvent[
 
   log.info('ingest.logs', 'Sending night-logs.md to LLM for extraction', { chars: raw.length });
 
-  const response = await client.messages.create({
-    model: 'claude-opus-4-5',
-    max_tokens: 4096,
+  const response = await client.chat.completions.create({
+    model: 'llama-3.3-70b-versatile',
+    response_format: { type: 'json_object' },
     messages: [
-      {
-        role: 'user',
-        content: `${EXTRACTION_PROMPT}\n\n---\n\n${raw}`,
-      },
+      { role: 'user', content: `${EXTRACTION_PROMPT}\n\n---\n\n${raw}` },
     ],
   });
 
-  const content = response.content[0];
-  if (content.type !== 'text') throw new Error('Unexpected LLM response type');
-
-  // Strip markdown code fences if present
-  const jsonText = content.text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim();
+  const jsonText = response.choices[0]?.message?.content?.trim() ?? '';
 
   let result: ExtractionResult;
   try {
     result = JSON.parse(jsonText);
   } catch (err) {
-    log.error('ingest.logs', 'Failed to parse LLM extraction response', { raw: content.text });
+    log.error('ingest.logs', 'Failed to parse LLM extraction response', { raw: jsonText });
     throw new Error(`LLM returned invalid JSON: ${err}`);
   }
 

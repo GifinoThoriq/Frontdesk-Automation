@@ -1,8 +1,8 @@
-import Anthropic from '@anthropic-ai/sdk';
+import Groq from 'groq-sdk';
 import { ReconcileResult, Handover, HandoverSection, HandoverItem, Issue } from './types';
 import { log } from './logger';
 
-const client = new Anthropic();
+const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 function issueToContext(issue: Issue): string {
   const sources = issue.events.map((e) => `  [${e.id}] ${e.sourceText}`).join('\n');
@@ -90,24 +90,21 @@ ${contextBlocks.join('\n\n')}`;
     issueCount: result.openIssues.length + result.newIssues.length + result.pendingIssues.length,
   });
 
-  const response = await client.messages.create({
-    model: 'claude-opus-4-5',
-    max_tokens: 4096,
+  const response = await client.chat.completions.create({
+    model: 'llama-3.3-70b-versatile',
+    response_format: { type: 'json_object' },
     messages: [
       { role: 'user', content: `${HANDOVER_PROMPT}\n\n---\n\n${userMessage}` },
     ],
   });
 
-  const content = response.content[0];
-  if (content.type !== 'text') throw new Error('Unexpected LLM response type');
-
-  const jsonText = content.text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim();
+  const jsonText = response.choices[0]?.message?.content?.trim() ?? '';
 
   let parsed: { sections: HandoverSection[] };
   try {
     parsed = JSON.parse(jsonText);
   } catch (err) {
-    log.error('generate', 'Failed to parse LLM handover response', { raw: content.text.slice(0, 500) });
+    log.error('generate', 'Failed to parse LLM handover response', { raw: jsonText.slice(0, 500) });
     throw new Error(`LLM returned invalid JSON: ${err}`);
   }
 
